@@ -123,7 +123,7 @@ void print_indent(int indent)
 uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, struct bpb33* bpb, int *refs)
 {
     uint16_t followclust = 0;
-
+    
     int i;
     char name[9];
     char extension[4];
@@ -219,21 +219,52 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
             refs[next_cluster]++;
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
+            if(previous==next_cluster){
+                printf("\nCluster pointing to itself\n");
+                set_fat_entry(next_cluster,FAT12_MASK & CLUST_EOFS, image_buf,bpb);
+                fat_chain ++;
+                break;
+            }
+            if(next_cluster == (FAT12_MASK&CLUST_BAD)){
+                printf("CLUSTER FOUND MARKED BAD\n");
+            }
+            fat_chain++;
+            
         
         }
-               
+        
+        if(((size/512)+1) < fat_chain){
+            printf("Consistency problem! Metadata file size less than cluster chain length\n");
+
+            
+        } 
+        if(((size/512)+1) > fat_chain){
+            printf("Consistency problem! Metadata file size greater than cluster chain length\n");
+
+        }
+      
     }
-
-
-
-
-
-
 
 
     return followclust;
 }
 
+void find_orphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
+    int stuff = 0;
+    //uint16_t cluster = getushort(dirent->deStartCluster);
+    //printf("hello");
+    for(int i = 2; i<numsec; i++){
+        //printf("wassup");
+        uint16_t cluster = get_fat_entry(i,image_buf, bpb);
+        if (refs[i]==0 && (cluster!=(FAT12_MASK&CLUST_FREE))){
+            stuff++;
+            printf("%d\n", i);
+            printf("%d\n", cluster);
+        }
+    }
+    printf("\n\n Orphan Annies: %d\n\n", stuff);
+
+}
 
 
 void follow_dir(uint16_t cluster, int indent, uint8_t *image_buf, struct bpb33* bpb, int *refs)
@@ -310,12 +341,13 @@ int main(int argc, char** argv) {
     bpb = check_bootsector(image_buf);
     traverse_root(image_buf, bpb, refs);
     
+    find_orphans(refs, bpb->bpbSectors, image_buf, bpb);
 
-    for(int j = 0; j<bpb->bpbSectors; j++){
+    /*for(int j = 0; j<bpb->bpbSectors; j++){
       if(refs[j] != 0){
         printf("%d: %d\n", j, refs[j]);
       }
-    }
+    }*/
 
 
 
