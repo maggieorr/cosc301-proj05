@@ -123,7 +123,6 @@ void print_indent(int indent)
 uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, struct bpb33* bpb, int *refs)
 {
     uint16_t followclust = 0;
-    
     int i;
     char name[9];
     char extension[4];
@@ -214,52 +213,71 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
                
         int fat_chain = 0;
         uint16_t next_cluster = getushort(dirent->deStartCluster);
-        
+        //set original cluster
+        uint16_t orig_cluster = next_cluster;
+        uint16_t previous;
         while(is_valid_cluster(next_cluster,bpb)){
             refs[next_cluster]++;
+            //check for when refs[next_cluster] >1
+            //what would you fix in this case?
+            if (refs[next_cluster] > 1){
+            		//do something
+            }
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
-            if(previous==next_cluster){
-                printf("\nCluster pointing to itself\n");
-                set_fat_entry(next_cluster,FAT12_MASK & CLUST_EOFS, image_buf,bpb);
-                fat_chain ++;
-                break;
-            }
-            if(next_cluster == (FAT12_MASK&CLUST_BAD)){
-                printf("CLUSTER FOUND MARKED BAD\n");
-            }
-            fat_chain++;
-            
-        
+            //printf("clusta clusta: %d\n", next_cluster);
+        		if (previous==next_cluster){
+        			printf("pointing to itself\n");
+        			//mark previous as EOF and leave 
+        			set_fat_entry(next_cluster, FAT12_MASK & CLUST_EOFS,image_buf, bpb);
+        			fat_chain++;
+        			break;
+        		}
+        		if (next_cluster == (FAT12_MASK & CLUST_BAD)){
+        			printf("BAD CLUSTER\n");
+        			//next_cluster= get_fat_entry(next_cluster,image_buf, bpb); 
+        			set_fat_entry(previous,FAT12_MASK & CLUST_EOFS,image_buf, bpb);
+        			//do we have to free the bad cluster???????
+        			printf("%d\n", previous);
+        			printf("%d\n", next_cluster);
+        			printf("%d\n", get_fat_entry(next_cluster,image_buf, bpb));
+        			break;
+        		}
+       
+        		
+						fat_chain ++;
         }
-        
-        if(((size/512)+1) < fat_chain){
-            printf("Consistency problem! Metadata file size less than cluster chain length\n");
-
-            
-        } 
-        if(((size/512)+1) > fat_chain){
-            printf("Consistency problem! Metadata file size greater than cluster chain length\n");
-
+        int getsize;
+        if (size%512 == 0)
+        	getsize = size/512;
+        else
+        	getsize= size/512 + 1;
+        	
+        if (getsize< fat_chain){
+        			printf("CONSISTENCY PROBLEM!! file size is less than the cluster chain length\n");
+        			//need to free clusters
+        			//orig_cluster + getsize
+        			next_cluster = get_fat_entry(orig_cluster+getsize-1, image_buf, bpb);
+        			while(is_valid_cluster(next_cluster,bpb)){
+        				previous = next_cluster;
+        				set_fat_entry(previous, FAT12_MASK & CLUST_FREE, image_buf, bpb);
+        				next_cluster = get_fat_entry(next_cluster, image_buf, bpb);
+        			}
+        			set_fat_entry(orig_cluster+getsize-1, FAT12_MASK & CLUST_EOFS, image_buf, bpb);
         }
-      
+        			
+        if (getsize > fat_chain){
+        			printf("CONSISTENCY PROBLEM!! file size is greater than the cluster chain length\n");
+        			int new_size= fat_chain*512;
+        			putulong(dirent->deFileSize,new_size);
+        }
+               
     }
 
 
     return followclust;
 }
 
-void find_orphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
-    int orphans = 0;
-    for(int i = 2; i<numsec; i++){
-        uint16_t cluster = get_fat_entry(i,image_buf, bpb);
-        if (refs[i]==0 && (cluster!=(FAT12_MASK&CLUST_FREE))){
-            orphans++;
-        }
-    }
-    printf("\nOrphans Found: %d\n", stuff);
-
-}
 
 
 void follow_dir(uint16_t cluster, int indent, uint8_t *image_buf, struct bpb33* bpb, int *refs)
@@ -312,7 +330,26 @@ void usage(char *progname) {
     exit(1);
 }
 
+void findorphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
+		int orphans=0;
+		for(int i=2;i<numsec;i++){
+			uint16_t cluster = get_fat_entry(i,image_buf, bpb);
+			if (refs[i]==0 && cluster != (FAT12_MASK & CLUST_FREE) && cluster != (FAT12_MASK & CLUST_BAD)){ 
+				orphans++;
+				//create_dirent
 
+			}
+		}
+		printf("orphan bebes: %d\n", orphans);
+}
+//make new entry in sector for the orphan...
+//dos copy
+//or bad
+
+//maximum size = 3*512 min=512*2 -----1024 up to 1536
+//check if size is consistent with number of references found
+//walk through disk image and fix anomalies
+//two file entries with same starting cluster
 int main(int argc, char** argv) {
     uint8_t *image_buf;
     int fd;
@@ -327,6 +364,7 @@ int main(int argc, char** argv) {
     // your code should start here...
     
     //int clusters = bpb->bpbBytesPerSec * bpb->bpbSecPerClust;
+    int numsec= bpb->bpbSectors;
     int *refs = malloc(sizeof(int)*bpb->bpbSectors);
     for(int i = 0; i<bpb->bpbSectors; i++){
       refs[i]=0;
@@ -335,16 +373,7 @@ int main(int argc, char** argv) {
     image_buf = mmap_file(argv[1], &fd);
     bpb = check_bootsector(image_buf);
     traverse_root(image_buf, bpb, refs);
-    
-    find_orphans(refs, bpb->bpbSectors, image_buf, bpb);
-
-    /*for(int j = 0; j<bpb->bpbSectors; j++){
-      if(refs[j] != 0){
-        printf("%d: %d\n", j, refs[j]);
-      }
-    }*/
-
-
+    findorphans(refs, numsec, image_buf, bpb);
 
 
 
