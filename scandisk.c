@@ -250,19 +250,14 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
 }
 
 void find_orphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
-    int stuff = 0;
-    //uint16_t cluster = getushort(dirent->deStartCluster);
-    //printf("hello");
+    int orphans = 0;
     for(int i = 2; i<numsec; i++){
-        //printf("wassup");
         uint16_t cluster = get_fat_entry(i,image_buf, bpb);
         if (refs[i]==0 && (cluster!=(FAT12_MASK&CLUST_FREE))){
-            stuff++;
-            printf("%d\n", i);
-            printf("%d\n", cluster);
+            orphans++;
         }
     }
-    printf("\n\n Orphan Annies: %d\n\n", stuff);
+    printf("\nOrphans Found: %d\n", stuff);
 
 }
 
