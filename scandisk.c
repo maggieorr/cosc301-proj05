@@ -15,6 +15,7 @@
 #include "fat.h"
 #include "dos.h"
 
+
 typedef struct Node{
   int refs;
   struct Node *next;
@@ -98,6 +99,7 @@ void create_dirent(struct direntry *dirent, char *filename,
 	       case it wasn't before */
 	    memset((uint8_t*)dirent, 0, sizeof(struct direntry));
 	    dirent->deName[0] = SLOT_EMPTY;
+	    printf("here1\n");
 	    return;
 	}
 
@@ -105,6 +107,7 @@ void create_dirent(struct direntry *dirent, char *filename,
 	{
 	    /* we found a deleted entry - we can just overwrite it */
 	    write_dirent(dirent, filename, start_cluster, size);
+	    printf("here2\n");
 	    return;
 	}
 	dirent++;
@@ -222,6 +225,7 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
             //what would you fix in this case?
             if (refs[next_cluster] > 1){
             		//do something
+            		printf("PROBLEMPROBLEMPROBLEM\n");
             }
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
@@ -242,11 +246,10 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
         			printf("%d\n", next_cluster);
         			printf("%d\n", get_fat_entry(next_cluster,image_buf, bpb));
         			break;
-        		}
-       
-        		
+        		}        		
 						fat_chain ++;
         }
+        
         int getsize;
         if (size%512 == 0)
         	getsize = size/512;
@@ -335,8 +338,29 @@ void findorphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
 		for(int i=2;i<numsec;i++){
 			uint16_t cluster = get_fat_entry(i,image_buf, bpb);
 			if (refs[i]==0 && cluster != (FAT12_MASK & CLUST_FREE) && cluster != (FAT12_MASK & CLUST_BAD)){ 
+				printf("Found orphan at: %d\n",i);
 				orphans++;
-				//create_dirent
+				//need to get correct size
+				int size=1;
+				refs[i]=1;
+				uint16_t copy = cluster;
+				
+				while(is_valid_cluster(copy, bpb)){
+					copy= get_fat_entry(copy,image_buf, bpb);
+					refs[copy]++;
+					size++;
+				}
+				char string[5];
+				sprintf(string, "%d", orphans);
+				char filename[1024]="";
+				strcat(filename, "found");
+				strcat(filename, string);
+				strcat(filename, ".dat");
+				char *file = filename;
+				printf("New file to add is: %s\n", filename);
+				//set_fat_entry(cluster, FAT12_MASK & CLUST_EOFS, image_buf, bpb);
+				struct direntry *dirent = (struct direntry*)root_dir_addr(image_buf, bpb);
+				create_dirent(dirent, file, i, size*512, image_buf, bpb);
 
 			}
 		}
