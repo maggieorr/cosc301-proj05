@@ -225,7 +225,11 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
             //what would you fix in this case?
             if (refs[next_cluster] > 1){
             		//do something
-            		printf("PROBLEMPROBLEMPROBLEM\n");
+            		//delete second entry that comes along if count will be greater than 1
+            		//set the first occurance to 
+            		dirent->deName[0] = SLOT_DELETED;
+            		refs[next_cluster] --;
+            		printf("Error: Multiple references\n");
             }
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
@@ -334,6 +338,7 @@ void usage(char *progname) {
 }
 
 void findorphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
+    //orphans should be printed out ideally in a chain, not individually
 		int orphans=0;
 		for(int i=2;i<numsec;i++){
 			uint16_t cluster = get_fat_entry(i,image_buf, bpb);
