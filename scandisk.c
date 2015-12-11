@@ -16,10 +16,7 @@
 #include "dos.h"
 
 
-typedef struct Node{
-  int refs;
-  struct Node *next;
-} Node;
+
 
 
 
@@ -223,14 +220,14 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
             refs[next_cluster]++;
             //check for when refs[next_cluster] >1
             //what would you fix in this case?
-            if (refs[next_cluster] > 1){
+            /*if (refs[next_cluster] > 1){
             		//do something
             		//delete second entry that comes along if count will be greater than 1
-            		//set the first occurance to 
+            		//doesn't work for badimage5 because other things going on that haven't been fixed yet
             		dirent->deName[0] = SLOT_DELETED;
             		refs[next_cluster] --;
-            		printf("Error: Multiple references\n");
-            }
+            		printf("Error: Multiple references to same cluster\n");
+            }*/
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
             //printf("clusta clusta: %d\n", next_cluster);
@@ -353,6 +350,16 @@ void findorphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
 				while(is_valid_cluster(copy, bpb)){
 					copy= get_fat_entry(copy,image_buf, bpb);
 					refs[copy]++;
+          
+          if (refs[copy] > 1){
+          	  struct direntry *dirent = (struct direntry*)cluster_to_addr(copy,image_buf, bpb);
+		          //do something
+		          //delete second entry that comes along if count will be greater than 1
+		          //doesn't work for badimage5 because other things going on that haven't been fixed yet
+		          dirent->deName[0] = SLOT_DELETED;
+		          refs[copy] --;
+		          printf("\nLotso refs\n");
+           }
 					size++;
 				}
 				char string[5];
