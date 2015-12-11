@@ -113,27 +113,32 @@ void print_indent(int indent)
 	printf(" ");
 }
 
-
+//A function to find a few errors that might be wrong with the files and their clusters
+//errors include: inconsistency problems, bad or free clusters being pointed to, and 
+//a cluster referencing itself (therefore creating an infinite chain).
+//The function will also fix all of these problems.
 void check_errors(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb, int *refs, int size){
+				//keep track of the size of the FAT entry chain
 				int fat_chain = 0;
         uint16_t next_cluster = getushort(dirent->deStartCluster);
         //set original cluster
         uint16_t orig_cluster = next_cluster;
         uint16_t previous;
+        //go through chain, update the reference array, and find & fix errors
         while(is_valid_cluster(next_cluster,bpb)){
             refs[next_cluster]++;
-
             uint16_t previous = next_cluster;
             next_cluster = get_fat_entry(next_cluster,image_buf, bpb);
         		if (previous==next_cluster){
         			printf("Pointing to itself - Setting FAT entry to EOF\n");
-        			//mark previous as EOF and leave 
+        			//mark as EOF and leave 
         			set_fat_entry(next_cluster, FAT12_MASK & CLUST_EOFS,image_buf, bpb);
         			fat_chain++;
         			break;
         		}
         		if (next_cluster == (FAT12_MASK & CLUST_BAD)){
         			printf("BAD CLUSTER!! Set previous cluster to EOF\n");
+        			//mark as end of file
         			set_fat_entry(previous,FAT12_MASK & CLUST_EOFS,image_buf, bpb);
         			break;
         		}
@@ -150,6 +155,9 @@ void check_errors(struct direntry *dirent, uint8_t *image_buf, struct bpb33* bpb
         else
         	getsize= size/512 + 1;
         	
+        //check for size inconsistencies between the size in the directory and the chain of FAT entries 
+        //and fix them when necessary
+        
         if (getsize< fat_chain){
         			printf("CONSISTENCY PROBLEM!! file size is less than the cluster chain length\n");
         			//need to free cluster and the chain of clusters after it
@@ -261,16 +269,13 @@ uint16_t print_dirent(struct direntry *dirent, int indent, uint8_t *image_buf, s
                hidden?'h':' ', 
                sys?'s':' ', 
                arch?'a':' ');
-               
-        check_errors(dirent, image_buf, bpb, refs, size);    
-        
-               
+        //added new function to check for any errors that could be fixed within the
+        //cluster chain of FAT entries       
+        check_errors(dirent, image_buf, bpb, refs, size);              
     }
-
 
     return followclust;
 }
-
 
 
 void follow_dir(uint16_t cluster, int indent, uint8_t *image_buf, struct bpb33* bpb, int *refs)
@@ -295,7 +300,6 @@ void follow_dir(uint16_t cluster, int indent, uint8_t *image_buf, struct bpb33* 
 	cluster = get_fat_entry(cluster, image_buf, bpb);
     }
 }
-
 
 
 void traverse_root(uint8_t *image_buf, struct bpb33* bpb, int *refs)
@@ -323,6 +327,9 @@ void usage(char *progname) {
     exit(1);
 }
 
+//a function to create a new file in the directory for all of the orphans
+//creates the string for the filename and then puts it into the root directory
+
 void create_file(int orphans, int size, int i, uint8_t *image_buf, struct bpb33* bpb){
 				char string[5];
 				sprintf(string, "%d", orphans);
@@ -336,6 +343,10 @@ void create_file(int orphans, int size, int i, uint8_t *image_buf, struct bpb33*
 				struct direntry *dirent = (struct direntry*)root_dir_addr(image_buf, bpb);
 				create_dirent(dirent, file, i, size*512, image_buf, bpb);
 }
+
+
+//a function to search for orphans (clusters that have no reference but are marked as bad or free)
+//and save them (aka add a new file to the directory and include its chain of FAT entries)
 
 void findorphans(int *refs, int numsec, uint8_t *image_buf, struct bpb33* bpb){
 		int orphans=0;
@@ -391,7 +402,9 @@ int main(int argc, char** argv) {
     
     image_buf = mmap_file(argv[1], &fd);
     bpb = check_bootsector(image_buf);
+    //go through each cluster in the directory and their chains and then find possible size errors 
     traverse_root(image_buf, bpb, refs);
+    //find and fix all orphans
     findorphans(refs, numsec, image_buf, bpb);
 
     unmmap_file(image_buf, &fd);
